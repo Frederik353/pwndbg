@@ -874,6 +874,7 @@ def load_commands() -> None:
 
     if pwndbg.dbg.is_gdblib_available():
         import pwndbg.commands.ai
+        import pwndbg.commands.angelheap
         import pwndbg.commands.attachp
         import pwndbg.commands.binja_functions
         import pwndbg.commands.branch
@@ -886,6 +887,7 @@ def load_commands() -> None:
         import pwndbg.commands.ipython_interactive
         import pwndbg.commands.killthreads
         import pwndbg.commands.peda
+        import pwndbg.commands.pwngdb
         import pwndbg.commands.reload
         import pwndbg.commands.ropper
         import pwndbg.commands.segments
