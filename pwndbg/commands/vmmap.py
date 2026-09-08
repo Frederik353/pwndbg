@@ -277,10 +277,12 @@ def vmmap(
     shared_cache_first = None
     shared_cache_last = None
     shared_cache_collapsed = 0
+    last_page = None  # last page we actually printed a row for, used for gap detection
 
     def flush_shared_cache_info():
         nonlocal shared_cache_first
         nonlocal shared_cache_last
+        nonlocal last_page
         if shared_cache_last is not None:
             print(
                 pwndbg.lib.memory.format_address(
@@ -292,6 +294,7 @@ def vmmap(
                 )
             )
 
+            last_page = shared_cache_last
             shared_cache_first = None
             shared_cache_last = None
 
@@ -315,11 +318,21 @@ def vmmap(
             # If page was one of the original results, add an arrow for clarity
             backtrace_prefix = str(pwndbg.config.backtrace_prefix)
 
-            # If the page is the only filtered page, insert offset
+            # If the page is the only filtered page, insert offset from the start of
+            # the containing file/library (not just this particular mapped segment) -
+            # this matches what `xinfo` calls "File (Base)" and is almost always the
+            # offset you actually want (e.g. offset into libc, not into its .data segment)
             if len(filtered_pages) == 1 and isinstance(gdbval_or_str, integer_types):
-                display_text = str(page) + " +0x%x" % (int(gdbval_or_str) - page.vaddr)
+                region_start = pwndbg.aglib.vmmap.addr_region_start(gdbval_or_str)
+                if region_start is None:
+                    region_start = page.vaddr
+                display_text = str(page) + " +0x%x" % (int(gdbval_or_str) - region_start)
+
+        if last_page is not None and page.start != last_page.end:
+            print_gap(page, last_page)
 
         print(M.get(page.vaddr, text=display_text, prefix=backtrace_prefix))
+        last_page = page
 
     flush_shared_cache_info()
     if shared_cache_collapsed > 0:

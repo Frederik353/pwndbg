@@ -76,7 +76,11 @@ def test_command_vmmap_on_coredump_on_crash_simple_binary(start_binary, unload_f
     expected_maps = get_proc_maps()
 
     gdb.execute("set vmmap-prefer-relpaths off")
-    vmmaps = gdb.execute("vmmap", to_string=True).splitlines()
+    # GAP rows are informational separators between non-contiguous mappings and
+    # aren't part of the actual page listing, so they're excluded from comparison
+    vmmaps = [
+        line for line in gdb.execute("vmmap", to_string=True).splitlines() if "GAP" not in line
+    ]
 
     # Basic asserts
     assert len(vmmaps) == len(expected_maps) + 2  # +2 for header and legend
@@ -101,7 +105,9 @@ def test_command_vmmap_on_coredump_on_crash_simple_binary(start_binary, unload_f
     gdb.execute(f"core-file {core}")
 
     old_len_vmmaps = len(vmmaps)
-    vmmaps = gdb.execute("vmmap", to_string=True).splitlines()
+    vmmaps = [
+        line for line in gdb.execute("vmmap", to_string=True).splitlines() if "GAP" not in line
+    ]
 
     # Note: we will now see one less vmmap page as [vvar] will be missing
     assert vmmaps[0] == "LEGEND: STACK | HEAP | CODE | DATA | WX | RODATA"
@@ -163,7 +169,9 @@ def test_command_vmmap_on_coredump_on_crash_simple_binary(start_binary, unload_f
     # a bug with this popped out, so I am double checking it here
     gdb.execute("file")
 
-    vmmaps = gdb.execute("vmmap", to_string=True).splitlines()
+    vmmaps = [
+        line for line in gdb.execute("vmmap", to_string=True).splitlines() if "GAP" not in line
+    ]
     vmmaps = [i.split() for i in vmmaps[2:]]
 
     assert_maps()
