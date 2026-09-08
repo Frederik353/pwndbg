@@ -318,15 +318,20 @@ def vmmap(
             # If page was one of the original results, add an arrow for clarity
             backtrace_prefix = str(pwndbg.config.backtrace_prefix)
 
-            # If the page is the only filtered page, insert offset from the start of
-            # the containing file/library (not just this particular mapped segment) -
-            # this matches what `xinfo` calls "File (Base)" and is almost always the
-            # offset you actually want (e.g. offset into libc, not into its .data segment)
+            # If the page is the only filtered page, insert the offset from the start
+            # of this particular mapped segment, and, when it differs, also the offset
+            # from the start of the whole file/library (contiguous mappings that share
+            # the same objfile name - see addr_region_start()). The latter matches what
+            # `xinfo` calls "File (Base)" and is usually the offset you actually want
+            # (e.g. offset into libc, not into its .data segment)
             if len(filtered_pages) == 1 and isinstance(gdbval_or_str, integer_types):
-                region_start = pwndbg.aglib.vmmap.addr_region_start(gdbval_or_str)
-                if region_start is None:
-                    region_start = page.vaddr
-                display_text = str(page) + " +0x%x" % (int(gdbval_or_str) - region_start)
+                addr = int(gdbval_or_str)
+                seg_offset = addr - page.vaddr
+                display_text = str(page) + " +0x%x" % seg_offset
+
+                region_start = pwndbg.aglib.vmmap.addr_region_start(addr)
+                if region_start is not None and region_start != page.vaddr:
+                    display_text += " (file +0x%x)" % (addr - region_start)
 
         if last_page is not None and page.start != last_page.end:
             print_gap(page, last_page)
