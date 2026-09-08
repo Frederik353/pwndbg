@@ -1260,7 +1260,11 @@ class GlibcMemoryAllocator(pwndbg.aglib.heap.heap.MemoryAllocator, Generic[TheTy
             )
             setattr(GlibcMemoryAllocator.tcachebins, "tcache_2_42_warning_issued", True)
 
-        counts = tcache["counts"]
+        # GLIBC >= 2.42 renamed the field `counts` -> `num_slots` (remaining slots)
+        try:
+            counts = tcache["counts"]
+        except Exception:
+            counts = tcache["num_slots"]
         entries = tcache["entries"]
 
         num_tcachebins = entries.type.sizeof // entries.type.target().sizeof
@@ -1275,7 +1279,8 @@ class GlibcMemoryAllocator(pwndbg.aglib.heap.heap.MemoryAllocator, Generic[TheTy
             size = self._request2size(tidx2usize(i))
             count = int(counts[i])
             if pwndbg.glibc.get_version() >= (2, 42):
-                count = pwndbg.aglib.heap.structs.TCACHE_FILL_COUNT - count
+                import pwndbg.aglib.heap.structs as _heap_structs  # ensure submodule loaded
+                count = _heap_structs.TCACHE_FILL_COUNT - count
             chain = pwndbg.chain.get(
                 int(entries[i]),
                 offset=self.tcache_next_offset,
@@ -1573,7 +1578,10 @@ class DebugSymsHeap(GlibcMemoryAllocator[pwndbg.dbg_mod.Type, pwndbg.dbg_mod.Val
         return self._main_arena
 
     def has_tcache(self) -> bool:
-        return self.mp is not None and "tcache_bins" in self.mp.type.keys()
+        return self.mp is not None and (
+            "tcache_bins" in self.mp.type.keys()
+            or "tcache_small_bins" in self.mp.type.keys()  # GLIBC >= 2.42 rename
+        )
 
     @property
     def thread_arena(self) -> Arena | None:
@@ -1718,7 +1726,10 @@ class DebugSymsHeap(GlibcMemoryAllocator[pwndbg.dbg_mod.Type, pwndbg.dbg_mod.Val
         addr = pwndbg.aglib.symbol.lookup_symbol_addr("__libc_malloc_initialized")
         if addr is None:
             addr = pwndbg.aglib.symbol.lookup_symbol_addr("__malloc_initialized")
-        assert addr is not None, "Could not find __libc_malloc_initialized or __malloc_initialized"
+        if addr is None:
+            # GLIBC >= 2.42 renamed the global to a static `is_initialized`,
+            # which is not reliably exported; fall back to detecting the heap.
+            return any("[heap]" == x.objfile for x in pwndbg.aglib.vmmap.get())
         return pwndbg.aglib.memory.s32(addr) > 0
 
 

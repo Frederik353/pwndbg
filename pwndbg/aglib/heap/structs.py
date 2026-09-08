@@ -583,7 +583,7 @@ class c_tcache_perthread_struct_2_42(Structure):
 
     _fields_ = [
         ("counts", ctypes.c_uint16 * TCACHE_MAX_BINS),
-        ("entries", c_pvoid * TCACHE_SMALL_BINS),
+        ("entries", c_pvoid * TCACHE_MAX_BINS),
     ]
 
 
