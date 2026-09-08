@@ -303,10 +303,12 @@ def vmmap(
     shared_cache_first = None
     shared_cache_last = None
     shared_cache_collapsed = 0
+    last_page = None  # The last page we actually printed, for gap detection
 
     def flush_shared_cache_info():
         nonlocal shared_cache_first
         nonlocal shared_cache_last
+        nonlocal last_page
         if shared_cache_first is not None and shared_cache_last is not None:
             print(
                 pwndbg.lib.memory.format_address(
@@ -318,6 +320,7 @@ def vmmap(
                     "[DYLD Shared Cache]",
                 )
             )
+            last_page = shared_cache_last
 
             shared_cache_first = None
             shared_cache_last = None
@@ -335,6 +338,9 @@ def vmmap(
             continue
         flush_shared_cache_info()
 
+        if last_page is not None and page.start != last_page.end:
+            print_gap(page, last_page)
+
         backtrace_prefix = empty_prefix
         display_text = str(page)
 
@@ -347,6 +353,7 @@ def vmmap(
                 display_text = str(page) + " +0x%x" % (int(gdbval_or_str) - page.vaddr)
 
         print(mem_color.get(page.vaddr, text=display_text, prefix=backtrace_prefix, page=page))
+        last_page = page
 
     flush_shared_cache_info()
     if shared_cache_collapsed > 0:
