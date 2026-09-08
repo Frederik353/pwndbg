@@ -350,7 +350,16 @@ def vmmap(
 
             # If the page is the only filtered page, insert offset
             if len(filtered_pages) == 1 and isinstance(gdbval_or_str, integer_types):
-                display_text = str(page) + " +0x%x" % (int(gdbval_or_str) - page.vaddr)
+                addr = int(gdbval_or_str)
+                seg_offset = addr - page.vaddr
+                display_text = str(page) + " +0x%x" % seg_offset
+
+                # Also show the offset from the start of the containing file/library,
+                # since that's usually the more useful offset (e.g. for libc/binary),
+                # but only if it differs from the segment-relative offset above.
+                region_start = pwndbg.aglib.vmmap.addr_region_start(addr)
+                if region_start is not None and region_start != page.vaddr:
+                    display_text += " (file +0x%x)" % (addr - region_start)
 
         print(mem_color.get(page.vaddr, text=display_text, prefix=backtrace_prefix, page=page))
         last_page = page
