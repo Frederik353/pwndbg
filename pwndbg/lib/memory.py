@@ -73,6 +73,11 @@ class Page:
     R_OK = os.R_OK
     W_OK = os.W_OK
     X_OK = os.X_OK
+    # Not a POSIX access flag. Used internally by kernel page-table scanners
+    # (e.g. pwndbg.aglib.kernel.paging.PageTableScan) to fold the PTE's U/S
+    # bit into the same flags int used for range coalescing, before it gets
+    # split back out into the `supervisor_only` constructor argument.
+    U_OK = 0x8
 
     vaddr = 0  #: Starting virtual address
     memsz = 0  #: Size of the address space, in bytes
@@ -105,6 +110,7 @@ class Page:
         in_darwin_shared_cache: bool = False,
         protection_key: int | None = None,
         vm_flags: list[str] | None = None,
+        supervisor_only: bool | None = None,
     ) -> None:
         self.vaddr = start
         self.memsz = size
@@ -115,6 +121,15 @@ class Page:
         self.arch_ptrsize = arch_ptrsize
         self.protection_key = protection_key
         self.vm_flags = vm_flags
+        # Whether this page's PTE marks it as reachable only from supervisor
+        # (kernel/EL1+) mode, as opposed to also being reachable from
+        # unprivileged (user/EL0) mode. This is a distinct axis from r/w/x
+        # and only meaningful for pages whose permissions were derived from
+        # real page table entries (e.g. `kernel-vmmap = page-tables`).
+        # None means this wasn't tracked: ordinary process mappings are
+        # implicitly user accessible, and some kernel vmmap backends (e.g.
+        # `monitor`) don't expose the U/S bit at all.
+        self.supervisor_only = supervisor_only
 
         # if self.rwx:
         # self.flags = self.flags ^ 1
@@ -187,16 +202,28 @@ class Page:
         return not (self.read or self.write or self.execute)
 
     @property
+    def user_accessible(self) -> bool | None:
+        """
+        Whether this page is reachable from unprivileged (user/EL0) mode.
+        Returns None when this wasn't tracked for this page (see
+        `supervisor_only`).
+        """
+        if self.supervisor_only is None:
+            return None
+        return not self.supervisor_only
+
+    @property
     def permstr(self) -> str:
         flags = self.flags
-        return "".join(
-            [
-                "r" if flags & self.R_OK else "-",
-                "w" if flags & self.W_OK else "-",
-                "x" if flags & self.X_OK else "-",
-                "p",
-            ]
-        )
+        chars = [
+            "r" if flags & self.R_OK else "-",
+            "w" if flags & self.W_OK else "-",
+            "x" if flags & self.X_OK else "-",
+            "p",
+        ]
+        if self.supervisor_only is not None:
+            chars.append("s" if self.supervisor_only else "u")
+        return "".join(chars)
 
     def __str__(self) -> str:
         if pwndbg.config.vmmap_prefer_relpaths and self.objfile:
@@ -223,4 +250,6 @@ class Page:
         return self.vaddr < getattr(other, "vaddr", other)  # type: ignore[arg-type]
 
     def __hash__(self) -> int:
-        return hash((self.vaddr, self.memsz, self.flags, self.offset, self.objfile))
+        return hash(
+            (self.vaddr, self.memsz, self.flags, self.offset, self.objfile, self.supervisor_only)
+        )

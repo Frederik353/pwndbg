@@ -158,8 +158,38 @@ def kernel_vmmap_via_page_tables() -> tuple[Page, ...]:
         if page.pwndbg_is_executable():
             flags |= 1
         objfile = f"[pt_{hex(start)[2:-3]}]"
-        retpages.append(Page(start, size, flags, 0, ptrsize, objfile))
+        retpages.append(
+            Page(
+                start,
+                size,
+                flags,
+                0,
+                ptrsize,
+                objfile,
+                supervisor_only=_page_supervisor_only(page),
+            )
+        )
     return tuple(retpages)
+
+
+def _page_supervisor_only(page: object) -> bool | None:
+    """
+    Best-effort extraction of the U/S bit from a `pt` library page object,
+    without depending on internals that differ between its x86-64,
+    aarch64, and riscv64 backends.
+    """
+    # x86-64 and riscv64 backends expose an explicit supervisor flag.
+    supervisor = getattr(page, "s", None)
+    if supervisor is not None:
+        return bool(supervisor)
+
+    # aarch64 backend represents pages as Aarch64_Block with AP permission
+    # bits instead; EL0 can access the page when AP == 0b01 (RW) or 0b11 (RO).
+    permissions = getattr(page, "permissions", None)
+    if permissions is not None:
+        return permissions not in (0b01, 0b11)
+
+    return None
 
 
 monitor_info_mem_not_warned = True

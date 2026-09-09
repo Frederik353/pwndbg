@@ -15,7 +15,9 @@ Unnamed mappings are named as [anon_%#x] where %#x is high part of their start a
 Known issues with vmmap:
 For QEMU user targets, the QEMU's gdbstub does not provide memory maps information to GDB until [0] is finished & merged. We try to deal with it without parsing the QEMU process' /proc/$pid/maps file, but if our approach fails, we simply create a [0, 0xffff...] vmmap which is not great and may result in lack of proper colors or inability to search memory with the `search` command.
 
-For QEMU kernel, we use gdb-pt-dump that parses page tables from the guest by reading /proc/$pid/mem of QEMU process. If this does not work for you, use `set kernel-vmmap-via-page-tables off` to refer to our old method of reading vmmap info from `monitor info mem` command exposed by QEMU. Note that the latter may be slower and will not give full vmmaps permission information.
+For QEMU kernel, we walk the guest's page tables directly (see the `kernel-vmmap` config option for the available methods, including a gdb-pt-dump-based fallback). Note that the `monitor` fallback method is slower and will not give full vmmap permission information.
+
+When permissions are derived from real page table entries (i.e. any `kernel-vmmap` method except `monitor`), the permission string gets a 5th character showing the PTE's U/S bit: `s` if the page is reachable only from supervisor/kernel mode, `u` if it is also reachable from unprivileged/user mode. This is a distinct axis from `rwxp` and does not appear for ordinary (non-kernel) mappings, which are implicitly user accessible.
 
 For coredump debugging, GDB also lacks all vmmap info but we do our best to get it back by using the `info proc mappings` and `maintenance info sections` commands.
 

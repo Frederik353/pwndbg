@@ -103,7 +103,14 @@ class PageTableScan:
             else:
                 if curr:
                     result.append(curr)
-                curr = Page(offset, size, flags, 0, self.ptrsize)
+                curr = Page(
+                    offset,
+                    size,
+                    flags,
+                    0,
+                    self.ptrsize,
+                    supervisor_only=not bool(flags & Page.U_OK),
+                )
         if curr:
             result.append(curr)
         return result
@@ -142,11 +149,17 @@ class PageTableScan:
                         flags = Page.R_OK if entry & 1 != 0 else 0
                         flags |= Page.W_OK if entry & (1 << 1) else 0
                         flags |= Page.X_OK if entry & (1 << 63) == 0 else 0
+                        # Bit 2 is the U/S bit: 1 means the page is reachable
+                        # from user mode (ring 3), 0 means supervisor-only.
+                        flags |= Page.U_OK if entry & (1 << 2) else 0
                     case "aarch64":
                         flags = Page.R_OK if entry & 1 != 0 else 0
                         flags |= Page.X_OK if (entry >> 53) & 3 != 3 else 0
                         ap = (entry >> 6) & 3
                         flags |= Page.W_OK if ap in {1, 0} else 0
+                        # AP[1] (bit 6, the low bit of `ap`) grants EL0
+                        # (user) access; when clear the page is EL1-only.
+                        flags |= Page.U_OK if ap & 1 else 0
                 if flags & Page.R_OK:  # only append present pages, read bit indicates presence
                     if curr_off is not None:
                         if flags == curr_flags:
